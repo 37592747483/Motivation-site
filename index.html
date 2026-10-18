@@ -17,6 +17,7 @@ h1{font-size:34px;margin:0 0 6px}
 button.opt{background:transparent;color:#eee;border:1px solid rgba(255,255,255,0.06);border-radius:999px;padding:8px 16px;margin:0 8px 8px 0;font-size:15px;cursor:pointer;font-family:inherit;transition:all .12s ease}
 button.opt.on{background:#fff;color:#111;border-color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}
 button.opt:focus{outline:3px solid rgba(11,132,255,0.18)}
+button.opt[disabled]{opacity:0.6}
 .controls{display:flex;align-items:center;gap:12px;margin:12px 0 18px}
 button.go{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(11,132,255,.12);transition:transform .08s ease}
 button.go:active{transform:translateY(1px)}
@@ -46,6 +47,7 @@ button.retry{background:var(--danger);color:#fff;border:none;padding:6px 10px;bo
 <div class="controls">
   <button class="go" id="searchBtn">Find my quotes</button>
   <button class="clear" id="clearBtn">Clear results</button>
+  <button class="clear" id="clearSelectionsBtn" title="Clear saved selections">Clear selections</button>
   <span class="small" id="summary">(choose 3 answers)</span>
 </div>
 <div id="out" aria-live="polite"></div>
@@ -61,7 +63,7 @@ var picks={};
 var limit = 6; var page = 1; var totalCount = 0; var lastQuery = '';
 var currentAbortController = null;
 
-// Expanded fallback pool (kept moderate in size here)
+// fallback quotes pool
 var fallbackQuotes = [
   {text:"The only way to do great work is to love what you do.", author:"Steve Jobs", tags:["hopeful","love","serious"]},
   {text:"It does not matter how slowly you go as long as you do not stop.", author:"Confucius", tags:["grit","hopeful","serious"]},
@@ -107,16 +109,18 @@ function buildQuiz(){
     var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
     for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
       var span=document.createElement('span');span.className='opt';
-      var b=document.createElement("button");b.className='opt';b.textContent=opt; b.setAttribute('role','radio');
+      var b=document.createElement("button");b.className='opt';b.textContent=opt; b.setAttribute('role','radio'); b.setAttribute('tabindex','0');
       b.setAttribute('aria-checked','false');
       b.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); b.click(); } });
       b.onclick=function(){ picks[Q.k]=opt; persistPicks(); updateButtons(d,opt); };
       span.appendChild(b);
       d.appendChild(span);
-      if(picks[Q.k]===opt){ setTimeout(function(){ b.classList.add('on'); b.setAttribute('aria-checked','true'); },0); }
+      // note: defer visual marking until after all buttons are attached
     })(Q,Q.opts[j]);}
     q.appendChild(d);
   }
+  // ensure restored selections are interactive and visually consistent
+  restoreSelections();
   updateSummary();
 }
 
@@ -125,6 +129,23 @@ function updateButtons(container,selected){
   for(var n=0;n<sib.length;n++){ sib[n].classList.remove('on'); sib[n].setAttribute('aria-checked','false'); }
   for(var n=0;n<sib.length;n++){ if(sib[n].textContent===selected){ sib[n].classList.add('on'); sib[n].setAttribute('aria-checked','true'); } }
   updateSummary();
+}
+
+function restoreSelections(){
+  // walk questions and update buttons so selections are editable after reload
+  for(var i=0;i<questions.length;i++){
+    var Q = questions[i];
+    var container = q.children[i]; // the corresponding .q element
+    if(!container) continue;
+    var selected = picks[Q.k];
+    if(selected){
+      updateButtons(container, selected);
+    } else {
+      // ensure none are marked
+      var sib = container.getElementsByTagName('button');
+      for(var n=0;n<sib.length;n++){ sib[n].classList.remove('on'); sib[n].setAttribute('aria-checked','false'); }
+    }
+  }
 }
 
 function persistPicks(){ try{ localStorage.setItem('quote-picks', JSON.stringify(picks)); }catch(e){ /* noop */ } }
@@ -189,13 +210,16 @@ async function find(reset){
 
 function clearResults(){ try{ if(currentAbortController){ currentAbortController.abort(); currentAbortController = null; } }catch(e){} document.getElementById('out').innerHTML=''; showToast('Results cleared'); }
 
+function clearSelections(){ try{ localStorage.removeItem('quote-picks'); picks = {}; buildQuiz(); showToast('Selections cleared'); }catch(e){ console.error('Failed to clear selections', e); } }
+
 function showToast(msg){ var s = document.createElement('div'); s.textContent = msg; s.style.position='fixed'; s.style.right='18px'; s.style.bottom='18px'; s.style.background='#222'; s.style.color='#fff'; s.style.padding='8px 12px'; s.style.borderRadius='8px'; s.style.boxShadow='0 6px 18px rgba(0,0,0,0.4)'; document.body.appendChild(s); setTimeout(function(){ s.remove(); },1500); }
 function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); showToast('Copied to clipboard'); }catch(e){ showToast('Copy failed'); } ta.remove(); }
-function escapeHtml(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
-function escapeHtmlAttr(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
+function escapeHtml(str){ return String(str).replace(/[&<>\\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]); }); }
+function escapeHtmlAttr(str){ return String(str).replace(/[&<>\\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]); }); }
 
 document.getElementById('searchBtn').addEventListener('click', function(){ page = 1; find(true); });
 document.getElementById('clearBtn').addEventListener('click', clearResults);
+document.getElementById('clearSelectionsBtn').addEventListener('click', clearSelections);
 (function runStaticChecks(){ var src = document.documentElement.innerHTML; var checks = { hasFind: /function\s+find\(/.test(src), hasSearchEndpoint: /search\/quotes/.test(src), hasLocalStorage: /localStorage/.test(src), hasFallbackQuotes: /fallbackQuotes/.test(src) }; console.log('Static checks', checks); })();
 </script>
 </body>
