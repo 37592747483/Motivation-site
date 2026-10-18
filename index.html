@@ -52,6 +52,7 @@ var page = 1;
 var totalCount = 0;
 var lastQuery = '';
 
+// a much longer fallback pool so the offline/mobile experience feels varied
 var fallbackQuotes = [
   {text:"The only way to do great work is to love what you do.", author:"Steve Jobs", tags:["hopeful","love","serious"]},
   {text:"It does not matter how slowly you go as long as you do not stop.", author:"Confucius", tags:["grit","hopeful","serious"]},
@@ -62,7 +63,27 @@ var fallbackQuotes = [
   {text:"Life is like riding a bicycle. To keep your balance, you must keep moving.", author:"Albert Einstein", tags:["growing up","hopeful","funny"]},
   {text:"The future depends on what you do today.", author:"Mahatma Gandhi", tags:["grit","hopeful","serious"]},
   {text:"In the middle of difficulty lies opportunity.", author:"Albert Einstein", tags:["heavy","grit","serious"]},
-  {text:"The secret of getting ahead is getting started.", author:"Mark Twain", tags:["hopeful","growing up","funny"]}
+  {text:"The secret of getting ahead is getting started.", author:"Mark Twain", tags:["hopeful","growing up","funny"]},
+  {text:"Don't watch the clock; do what it does. Keep going.", author:"Sam Levenson", tags:["grit","hopeful","serious"]},
+  {text:"You miss 100% of the shots you don't take.", author:"Wayne Gretzky", tags:["grit","hopeful","funny"]},
+  {text:"Do what you can, with what you have, where you are.", author:"Theodore Roosevelt", tags:["grit","hopeful","serious"]},
+  {text:"Be yourself; everyone else is already taken.", author:"Oscar Wilde", tags:["growing up","funny","hopeful"]},
+  {text:"Act as if what you do makes a difference. It does.", author:"William James", tags:["hopeful","grit","serious"]},
+  {text:"What you get by achieving your goals is not as important as what you become by achieving your goals.", author:"Zig Ziglar", tags:["growing up","grit","serious"]},
+  {text:"The best way out is always through.", author:"Robert Frost", tags:["grit","heavy","serious"]},
+  {text:"Happiness depends upon ourselves.", author:"Aristotle", tags:["hopeful","growing up","serious"]},
+  {text:"Believe you can and you're halfway there.", author:"Theodore Roosevelt", tags:["hopeful","grit","serious"]},
+  {text:"You must be the change you wish to see in the world.", author:"Mahatma Gandhi", tags:["freedom","hopeful","serious"]},
+  {text:"Tough times never last, but tough people do.", author:"Robert Schuller", tags:["grit","heavy","serious"]},
+  {text:"Imperfection is beauty, madness is genius and it's better to be absolutely ridiculous than absolutely boring.", author:"Marilyn Monroe", tags:["funny","love","growing up"]},
+  {text:"Everything you can imagine is real.", author:"Pablo Picasso", tags:["hopeful","freedom","funny"]},
+  {text:"It always seems impossible until it's done.", author:"Nelson Mandela", tags:["grit","hopeful","serious"]},
+  {text:"Strive not to be a success, but rather to be of value.", author:"Albert Einstein", tags:["growing up","serious","hopeful"]},
+  {text:"A room without books is like a body without a soul.", author:"Marcus Tullius Cicero", tags:["growing up","serious","heavy"]},
+  {text:"To live is the rarest thing in the world. Most people exist, that is all.", author:"Oscar Wilde", tags:["growing up","heavy","funny"]},
+  {text:"You only live once, but if you do it right, once is enough.", author:"Mae West", tags:["funny","hopeful","freedom"]},
+  {text:"The purpose of our lives is to be happy.", author:"Dalai Lama", tags:["hopeful","growing up","serious"]},
+  {text:"Keep your face always toward the sunshine—and shadows will fall behind you.", author:"Walt Whitman", tags:["hopeful","love","serious"]}
 ];
 
 // restore picks from localStorage if present
@@ -116,6 +137,13 @@ function fetchWithTimeout(url, opts, timeoutMs){
   return fetch(url, Object.assign({}, opts||{}, {signal: controller.signal})).finally(function(){ clearTimeout(id); });
 }
 
+// shuffle helper (Fisher-Yates)
+function shuffleArray(arr){
+  var a = arr.slice();
+  for(var i=a.length-1;i>0;i--){ var j = Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a;
+}
+
 function scoreFallbackQuote(item){
   var score = 0;
   var mood = picks.mood || '';
@@ -124,20 +152,19 @@ function scoreFallbackQuote(item){
   if(item.tags && item.tags.indexOf(mood) !== -1) score += 4;
   if(item.tags && item.tags.indexOf(theme) !== -1) score += 4;
   if(item.tags && item.tags.indexOf(tone) !== -1) score += 3;
+  // small random jitter so equal-score items don't always sort the same
+  score += Math.random()*0.1;
   return score;
 }
 
 function renderFallbackQuotes(){
-  var items = fallbackQuotes
-    .map(function(item){ return {item:item, score:scoreFallbackQuote(item)}; })
-    .filter(function(entry){ return entry.score > 0; })
-    .sort(function(a,b){ return b.score - a.score; })
-    .slice(0,6)
-    .map(function(entry){ return entry.item; });
-
-  if(items.length === 0){
-    items = fallbackQuotes.slice(0,6);
-  }
+  // shuffle the pool so reloads look different
+  var shuffledPool = shuffleArray(fallbackQuotes);
+  // score and select top N (N varies slightly for variety)
+  var scored = shuffledPool.map(function(item){ return {item:item, score:scoreFallbackQuote(item)}; });
+  scored.sort(function(a,b){ return b.score - a.score; });
+  var pickCount = 6 + Math.floor(Math.random()*5); // 6..10
+  var items = scored.slice(0,pickCount).map(function(e){ return e.item; });
 
   var html = '';
   for(var i=0;i<items.length;i++){
@@ -183,6 +210,9 @@ async function find(reset){
       return;
     }
 
+    // randomize API results order slightly so it's not identical every time
+    results = shuffleArray(results);
+
     var html = '';
     for(var i=0;i<results.length;i++){
       var r = results[i];
@@ -215,6 +245,7 @@ function showToast(msg){ var s = document.createElement('div'); s.textContent = 
 function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); showToast('Copied to clipboard'); }catch(e){ showToast('Copy failed'); } ta.remove(); }
 function escapeHtml(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
 function escapeHtmlAttr(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
+
 document.getElementById('searchBtn').addEventListener('click', function(){ page = 1; find(true); });
 (function runStaticChecks(){
   var src = document.documentElement.innerHTML;
