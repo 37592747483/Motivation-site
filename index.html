@@ -6,28 +6,37 @@
 <title>Quote Finder</title>
 <style>
 body{font-family:Georgia,serif;background:#111;color:#eee;margin:0;padding:32px 20px;line-height:1.5}
-.wrap{max-width:640px;margin:0 auto}
+.wrap{max-width:800px;margin:0 auto}
 h1{font-size:28px;margin:0 0 8px}
-.sub{color:#999;margin:0 0 28px}
-.q{margin-bottom:22px}
+.sub{color:#999;margin:0 0 12px}
+.q{margin-bottom:18px}
 .q h2{font-size:16px;margin:0 0 10px}
-button{background:#222;color:#eee;border:1px solid #444;border-radius:999px;padding:8px 16px;margin:0 8px 8px 0;font-size:14px;cursor:pointer;font-family:inherit}
-button.on{background:#eee;color:#111;border-color:#eee}
-.go{background:#eee;color:#111;border:none;font-weight:bold;padding:12px 24px;margin-top:8px}
-#out{margin-top:32px}
-.card{border-left:3px solid #555;padding:4px 0 4px 16px;margin-bottom:22px}
+.opt{display:inline-block}
+button.opt{background:#222;color:#eee;border:1px solid #444;border-radius:999px;padding:8px 16px;margin:0 8px 8px 0;font-size:14px;cursor:pointer;font-family:inherit}
+button.opt.on{background:#eee;color:#111;border-color:#eee}
+button.go{background:#0b84ff;color:#fff;border:none;border-radius:8px;padding:10px 18px;margin-top:8px;font-weight:600;cursor:pointer}
+#out{margin-top:20px}
+.card{border-left:3px solid #555;padding:8px 12px;margin-bottom:12px;background:rgba(255,255,255,0.02)}
 .qt{display:block;font-size:18px}
 .au{color:#999;font-size:14px}
 .none{color:#f66}
+.controls{margin:12px 0 18px}
+.small{color:#999;font-size:13px}
+.copy{background:#222;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;margin-left:8px}
+.loadMore{background:#333;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;margin-top:8px}
+.status{color:#ccc;margin-top:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1>Quote Finder</h1>
-<p class="sub">Answer 3 questions and I will pull the quotes that fit.</p>
-<div id="quiz"></div>
-<button class="go" onclick="find()">Find my quotes</button>
-<div id="out"></div>
+<p class="sub">Answer 3 questions and I'll find quotes that match. Selections are saved locally so you can come back.</p>
+<div id="quiz" role="radiogroup" aria-label="Quote options"></div>
+<div class="controls">
+  <button class="go" id="searchBtn">Find my quotes</button>
+  <span class="small" id="summary">(choose 3 answers)</span>
+</div>
+<div id="out" aria-live="polite"></div>
 </div>
 <script>
 var questions=[
@@ -37,78 +46,136 @@ var questions=[
 ];
 
 var picks={};
+var limit = 6;
+var page = 1;
+var totalCount = 0;
+var lastQuery = '';
+
+// restore picks from localStorage if present
+try{ var saved = localStorage.getItem('quote-picks'); if(saved){ picks = JSON.parse(saved);} }catch(e){ /* ignore */ }
+
 var q=document.getElementById("quiz");
-for(var i=0;i<questions.length;i++){
-  var Q=questions[i];
-  var d=document.createElement("div");d.className="q";
-  var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
-  for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
-    var b=document.createElement("button");b.textContent=opt;
-    b.onclick=function(){picks[Q.k]=opt;var sib=d.getElementsByTagName("button");
-      for(var n=0;n<sib.length;n++){sib[n].className="";}b.className="on";};
-    d.appendChild(b);})(Q,Q.opts[j]);
+function buildQuiz(){
+  q.innerHTML = '';
+  for(var i=0;i<questions.length;i++){
+    var Q=questions[i];
+    var d=document.createElement("div");d.className="q";
+    var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
+    for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
+      var span=document.createElement('span');span.className='opt';
+      var b=document.createElement("button");b.className='opt';b.textContent=opt; b.setAttribute('role','radio');
+      b.setAttribute('aria-checked','false');
+      // keyboard support
+      b.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); b.click(); } });
+      b.onclick=function(){ picks[Q.k]=opt; persistPicks(); updateButtons(d,opt); };
+      span.appendChild(b);
+      d.appendChild(span);
+      // restore selection if present
+      if(picks[Q.k]===opt){ setTimeout(function(){ b.classList.add('on'); b.setAttribute('aria-checked','true'); },0); }
+    })(Q,Q.opts[j]);}
+    q.appendChild(d);
   }
-  q.appendChild(d);
+  updateSummary();
 }
 
-/*
-  fetch quotes from Quotable (no API key required):
-  docs: https://github.com/lukePeavey/quotable
-  Use the dedicated search endpoint, since the plain /quotes route does not support
-  full-text query filtering in the public API.
-*/
-async function find(){
-  var want=[]; for(var k in picks){ want.push(picks[k]); }
+function updateButtons(container,selected){
+  var sib=container.getElementsByTagName('button');
+  for(var n=0;n<sib.length;n++){ sib[n].classList.remove('on'); sib[n].setAttribute('aria-checked','false'); }
+  // mark the clicked one
+  for(var n=0;n<sib.length;n++){ if(sib[n].textContent===selected){ sib[n].classList.add('on'); sib[n].setAttribute('aria-checked','true'); } }
+  updateSummary();
+}
+
+function persistPicks(){
+  try{ localStorage.setItem('quote-picks', JSON.stringify(picks)); }catch(e){ /* noop */ }
+}
+
+function updateSummary(){
+  var cnt = 0; for(var k in picks) if(picks[k]) cnt++;
+  document.getElementById('summary').textContent = '('+cnt+' of '+questions.length+' chosen)';
+}
+
+buildQuiz();
+
+// improved search with pagination and better UX
+async function find(reset){
+  if(reset===undefined) reset = true;
+  if(reset){ page = 1; totalCount = 0; lastQuery = ''; document.getElementById('out').innerHTML=''; }
+  var want=[]; for(var k in picks){ if(picks[k]) want.push(picks[k]); }
   var out=document.getElementById("out");
   if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all 3 first.</p>'; return; }
 
-  // Build a simple search query from the selected words
-  var query = want.join(' '); // e.g. "hopeful love serious"
-  out.innerHTML = '<p>Loading quotes…</p>';
-
-  // Use Quotable public search endpoint for text matching
-  var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=20';
+  var query = want.join(' ');
+  lastQuery = query;
+  out.innerHTML = '<p class="status">Loading quotes…</p>';
+  var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=' + limit + '&page=' + page;
 
   try {
     var res = await fetch(url);
     if(!res.ok) throw new Error('API error: ' + res.status);
     var data = await res.json();
     var results = data.results || [];
+    totalCount = data.totalCount || results.length || 0;
 
     // If no results, try a broader search by using just the theme
-    if(results.length === 0 && picks.theme){
-      var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=20';
+    if(results.length === 0 && picks.theme && query !== picks.theme){
+      var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=' + limit + '&page=1';
       var fres = await fetch(fallbackUrl);
-      if(fres.ok){
-        var fdata = await fres.json();
-        results = fdata.results || [];
-      }
+      if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; totalCount = fdata.totalCount || results.length || 0; }
     }
 
-    if(results.length === 0){
-      out.innerHTML = '<p class="none">No match. Try different answers.</p>';
-      return;
-    }
+    if(results.length === 0){ out.innerHTML = '<p class="none">No match. Try different answers.</p>'; return; }
 
-    // Render results
+    // Render results (append if page>1)
     var html = '';
     for(var i=0;i<results.length;i++){
       var r = results[i];
-      html += '<div class="card"><span class="qt">' + escapeHtml(r.content) + '</span><span class="au"> — ' + escapeHtml(r.author) + '</span></div>';
+      html += '<div class="card"><span class="qt">' + escapeHtml(r.content) + '</span><span class="au"> — ' + escapeHtml(r.author) + '</span>' +
+              '<button class="copy" data-quote="' + escapeHtmlAttr(r.content + ' — ' + r.author) + '">Copy</button></div>';
     }
-    out.innerHTML = html;
-  } catch(err){
-    console.error(err);
-    out.innerHTML = '<p class="none">Error fetching quotes. Try again later.</p>';
-  }
+
+    if(page===1){ out.innerHTML = '<div class="small">Found ' + totalCount + ' quotes matching "' + escapeHtml(query) + '"</div>' + html; }
+    else { out.innerHTML = out.innerHTML + html; }
+
+    // load more control
+    var loadMoreNode = document.getElementById('loadMoreBtn'); if(loadMoreNode) loadMoreNode.remove();
+    if(page * limit < totalCount){
+      var lm = document.createElement('button'); lm.textContent = 'Load more'; lm.className='loadMore'; lm.id='loadMoreBtn';
+      lm.onclick = function(){ page++; find(false); };
+      out.appendChild(lm);
+    }
+
+    // attach copy handlers
+    var copies = out.getElementsByClassName('copy');
+    for(var c=0;c<copies.length;c++){
+      copies[c].onclick = function(e){ var txt = this.getAttribute('data-quote'); if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ showToast('Copied to clipboard'); }, function(){ fallbackCopy(txt); }); } else { fallbackCopy(txt); }};
+    }
+
+  } catch(err){ console.error(err); out.innerHTML = '<p class="none">Error fetching quotes. Try again later.</p>'; }
 }
 
+// helper to show tiny toast-like message
+function showToast(msg){ var s = document.createElement('div'); s.textContent = msg; s.style.position='fixed'; s.style.right='20px'; s.style.bottom='20px'; s.style.background='#222'; s.style.color='#fff'; s.style.padding='8px 12px'; s.style.borderRadius='6px'; document.body.appendChild(s); setTimeout(function(){ s.remove(); },1600); }
+function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); showToast('Copied to clipboard'); }catch(e){ showToast('Copy failed'); } ta.remove(); }
+
 // small helper to avoid HTML injection
-function escapeHtml(str){
-  return String(str).replace(/[&<>"']/g, function(m){
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);
-  });
-}
+function escapeHtml(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
+function escapeHtmlAttr(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
+
+// wire up search button
+document.getElementById('searchBtn').addEventListener('click', function(){ page = 1; find(true); });
+
+// basic tests (static checks) to ensure we didn't remove critical pieces
+(function runStaticChecks(){
+  var src = document.documentElement.innerHTML;
+  var checks = {
+    hasFind: /function\s+find\(/.test(src),
+    hasSearchEndpoint: /search\/quotes/.test(src),
+    hasLocalStorage: /localStorage/.test(src)
+  };
+  console.log('Static checks', checks);
+})();
+
 </script>
 </body>
 </html>
