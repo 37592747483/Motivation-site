@@ -54,7 +54,8 @@ for(var i=0;i<questions.length;i++){
 /*
   fetch quotes from Quotable (no API key required):
   docs: https://github.com/lukePeavey/quotable
-  We'll use the query parameter to search the quote text for the user's picks.
+  Use the dedicated search endpoint, since the plain /quotes route does not support
+  full-text query filtering in the public API.
 */
 async function find(){
   var want=[]; for(var k in picks){ want.push(picks[k]); }
@@ -65,8 +66,8 @@ async function find(){
   var query = want.join(' '); // e.g. "hopeful love serious"
   out.innerHTML = '<p>Loading quotes…</p>';
 
-  // Use Quotable public API
-  var url = 'https://api.quotable.io/quotes?query=' + encodeURIComponent(query) + '&limit=20';
+  // Use Quotable public search endpoint for text matching
+  var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=20';
 
   try {
     var res = await fetch(url);
@@ -76,7 +77,7 @@ async function find(){
 
     // If no results, try a broader search by using just the theme
     if(results.length === 0 && picks.theme){
-      var fallbackUrl = 'https://api.quotable.io/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=20';
+      var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=20';
       var fres = await fetch(fallbackUrl);
       if(fres.ok){
         var fdata = await fres.json();
