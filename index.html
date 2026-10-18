@@ -237,7 +237,9 @@ async function find(reset){
     out.innerHTML = html;
   } catch(err){
     console.error('Quote fetch failed:', err);
-    out.innerHTML = '<p class="none">Error fetching quotes. Please check your connection or try again later.</p>';
+    // show detailed error message so user can report it
+    var msg = 'Error fetching quotes. ' + (err && err.message ? escapeHtml(err.message) : 'Please check your connection or try again later.');
+    out.innerHTML = '<p class="none">' + msg + '</p>';
   }
 }
 
