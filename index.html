@@ -25,6 +25,7 @@ button.go{background:#0b84ff;color:#fff;border:none;border-radius:8px;padding:10
 .copy{background:#222;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;margin-left:8px}
 .loadMore{background:#333;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;margin-top:8px}
 .status{color:#ccc;margin-top:8px}
+.retry{background:#ff6b6b;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;margin-left:8px}
 </style>
 </head>
 <body>
@@ -97,6 +98,14 @@ function updateSummary(){
 
 buildQuiz();
 
+// helper: timeout-aware fetch using AbortController
+function fetchWithTimeout(url, opts, timeoutMs){
+  var controller = new AbortController();
+  var id = setTimeout(function(){ controller.abort(); }, timeoutMs||10000);
+  try{ return fetch(url, Object.assign({}, opts||{}, {signal: controller.signal})).finally(function(){ clearTimeout(id); }); }
+  catch(e){ clearTimeout(id); return Promise.reject(e); }
+}
+
 // improved search with pagination and better UX
 async function find(reset){
   if(reset===undefined) reset = true;
@@ -105,14 +114,22 @@ async function find(reset){
   var out=document.getElementById("out");
   if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all 3 first.</p>'; return; }
 
+  if(!navigator.onLine){ out.innerHTML = '<p class="none">You appear offline. Check your network and try again.</p>'; return; }
+
   var query = want.join(' ');
   lastQuery = query;
   out.innerHTML = '<p class="status">Loading quotes…</p>';
   var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=' + limit + '&page=' + page;
 
   try {
-    var res = await fetch(url);
-    if(!res.ok) throw new Error('API error: ' + res.status);
+    var res = await fetchWithTimeout(url, {mode:'cors'}, 10000);
+    if(!res.ok){
+      // try to extract body for more helpful error message
+      var details = '';
+      try { details = await res.text(); details = details.substring(0,250); } catch(e){ /* ignore */ }
+      throw new Error('API error: ' + res.status + ' ' + (res.statusText||'') + (details?(' — '+details):''));
+    }
+
     var data = await res.json();
     var results = data.results || [];
     totalCount = data.totalCount || results.length || 0;
@@ -120,7 +137,7 @@ async function find(reset){
     // If no results, try a broader search by using just the theme
     if(results.length === 0 && picks.theme && query !== picks.theme){
       var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=' + limit + '&page=1';
-      var fres = await fetch(fallbackUrl);
+      var fres = await fetchWithTimeout(fallbackUrl, {mode:'cors'}, 10000);
       if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; totalCount = fdata.totalCount || results.length || 0; }
     }
 
@@ -151,7 +168,14 @@ async function find(reset){
       copies[c].onclick = function(e){ var txt = this.getAttribute('data-quote'); if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ showToast('Copied to clipboard'); }, function(){ fallbackCopy(txt); }); } else { fallbackCopy(txt); }};
     }
 
-  } catch(err){ console.error(err); out.innerHTML = '<p class="none">Error fetching quotes. Try again later.</p>'; }
+  } catch(err){
+    console.error('Quote fetch failed:', err);
+    var msg = err && err.message ? err.message : String(err);
+    // show user-facing message with retry button
+    out.innerHTML = '<div><p class="none">Error fetching quotes: ' + escapeHtml(msg) + '</p>' +
+                    '<button class="retry" id="retryBtn">Retry</button></div>';
+    document.getElementById('retryBtn').addEventListener('click', function(){ find(true); });
+  }
 }
 
 // helper to show tiny toast-like message
