@@ -195,7 +195,8 @@ function buildQuoteRequest(){
   if(picks.length === 'medium') { params.push('minLength=81'); params.push('maxLength=160'); }
   if(picks.length === 'long') params.push('minLength=161');
 
-  return 'https://api.quotable.io/quotes?' + params.join('&');
+  // Proxy through local server endpoint so we don't call external APIs from the browser directly
+  return '/api/search?' + params.join('&');
 }
 
 async function find(reset){
@@ -219,7 +220,7 @@ async function find(reset){
     var results = data.results || [];
 
     if(results.length === 0 && picks.theme){
-      var fallbackUrl = 'https://api.quotable.io/quotes?limit=20&query=' + encodeURIComponent(picks.theme);
+      var fallbackUrl = '/api/search?limit=20&query=' + encodeURIComponent(picks.theme);
       var fres = await fetchWithTimeout(fallbackUrl, {mode:'cors'}, 10000);
       if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; }
     }
@@ -237,7 +238,6 @@ async function find(reset){
     out.innerHTML = html;
   } catch(err){
     console.error('Quote fetch failed:', err);
-    // show detailed error message so user can report it
     var msg = 'Error fetching quotes. ' + (err && err.message ? escapeHtml(err.message) : 'Please check your connection or try again later.');
     out.innerHTML = '<p class="none">' + msg + '</p>';
   }
