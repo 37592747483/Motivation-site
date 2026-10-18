@@ -18,6 +18,7 @@ button.on{background:#eee;color:#111;border-color:#eee}
 .card{border-left:3px solid #555;padding:4px 0 4px 16px;margin-bottom:22px}
 .qt{display:block;font-size:18px}
 .au{color:#999;font-size:14px}
+.none{color:#f66}
 </style>
 </head>
 <body>
@@ -30,52 +31,83 @@ button.on{background:#eee;color:#111;border-color:#eee}
 </div>
 <script>
 var questions=[
-{k:"mood",label:"How are you feeling?",opts:["heavy","hopeful","chaotic"]},
-{k:"theme",label:"What is on your mind?",opts:["love","grit","growing up","freedom"]},
-{k:"tone",label:"What tone do you want?",opts:["serious","funny"]}
+  {k:"mood",label:"How are you feeling?",opts:["heavy","hopeful","chaotic"]},
+  {k:"theme",label:"What is on your mind?",opts:["love","grit","growing up","freedom"]},
+  {k:"tone",label:"What tone do you want?",opts:["serious","funny"]}
 ];
-var quotes=[
-{t:"The obstacle is the way.",a:"Marcus Aurelius",tags:["hopeful","grit","serious"]},
-{t:"We suffer more often in imagination than in reality.",a:"Seneca",tags:["heavy","grit","serious"]},
-{t:"You have power over your mind, not outside events.",a:"Marcus Aurelius",tags:["hopeful","grit","serious"]},
-{t:"Waste no more time arguing what a good man should be. Be one.",a:"Marcus Aurelius",tags:["hopeful","grit","serious"]},
-{t:"Luck is what happens when preparation meets opportunity.",a:"Seneca",tags:["hopeful","grit","serious"]},
-{t:"The best revenge is to be unlike him who performed the injury.",a:"Marcus Aurelius",tags:["heavy","freedom","serious"]},
-{t:"While we wait for life, life passes.",a:"Seneca",tags:["heavy","growing up","serious"]},
-{t:"No man is free who is not master of himself.",a:"Epictetus",tags:["hopeful","freedom","serious"]},
-{t:"First say to yourself what you would be, then do what you have to do.",a:"Epictetus",tags:["hopeful","growing up","serious"]},
-{t:"People are not disturbed by things, but by the view they take of them.",a:"Epictetus",tags:["heavy","love","serious"]},
-{t:"You could leave life right now. Let that determine what you do and say and think.",a:"Marcus Aurelius",tags:["chaotic","freedom","serious"]},
-{t:"It is not death a man should fear, but he should fear never beginning to live.",a:"Marcus Aurelius",tags:["heavy","growing up","serious"]},
-{t:"I can resist everything except temptation.",a:"Oscar Wilde",tags:["chaotic","love","funny"]},
-{t:"Always forgive your enemies; nothing annoys them so much.",a:"Oscar Wilde",tags:["chaotic","freedom","funny"]},
-{t:"I am not young enough to know everything.",a:"Oscar Wilde",tags:["chaotic","growing up","funny"]},
-{t:"Life is far too important a thing ever to talk seriously about.",a:"Oscar Wilde",tags:["chaotic","love","funny"]}
-];
+
 var picks={};
 var q=document.getElementById("quiz");
 for(var i=0;i<questions.length;i++){
-var Q=questions[i];
-var d=document.createElement("div");d.className="q";
-var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
-for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
-var b=document.createElement("button");b.textContent=opt;
-b.onclick=function(){picks[Q.k]=opt;var sib=d.getElementsByTagName("button");
-for(var n=0;n<sib.length;n++){sib[n].className="";}b.className="on";};
-d.appendChild(b);})(Q,Q.opts[j]);}
-q.appendChild(d);}
-function find(){
-var want=[];for(var k in picks){want.push(picks[k]);}
-if(want.length<questions.length){document.getElementById("out").innerHTML='<p class="none">Answer all 3 first.</p>';return;}
-var hits=quotes.map(function(x){var s=0;for(var i=0;i<x.tags.length;i++){if(want.indexOf(x.tags[i])>-1)s++;}return{x:x,s:s};});
-var best=hits.filter(function(h){return h.s>=2;});
-if(!best.length){best=hits.filter(function(h){return h.s>=1;});}
-best.sort(function(a,b){return b.s-a.s;});
-var out=document.getElementById("out");
-if(!best.length){out.innerHTML='<p class="none">No match. Try different answers.</p>';return;}
-var html="";
-for(var i=0;i<best.length;i++){html+='<div class="card"><span class="qt">'+best[i].x.t+'</span><span class="au">'+best[i].x.a+'</span></div>';}
-out.innerHTML=html;}
+  var Q=questions[i];
+  var d=document.createElement("div");d.className="q";
+  var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
+  for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
+    var b=document.createElement("button");b.textContent=opt;
+    b.onclick=function(){picks[Q.k]=opt;var sib=d.getElementsByTagName("button");
+      for(var n=0;n<sib.length;n++){sib[n].className="";}b.className="on";};
+    d.appendChild(b);})(Q,Q.opts[j]);
+  }
+  q.appendChild(d);
+}
+
+/*
+  fetch quotes from Quotable (no API key required):
+  docs: https://github.com/lukePeavey/quotable
+  We'll use the query parameter to search the quote text for the user's picks.
+*/
+async function find(){
+  var want=[]; for(var k in picks){ want.push(picks[k]); }
+  var out=document.getElementById("out");
+  if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all 3 first.</p>'; return; }
+
+  // Build a simple search query from the selected words
+  var query = want.join(' '); // e.g. "hopeful love serious"
+  out.innerHTML = '<p>Loading quotes…</p>';
+
+  // Use Quotable public API
+  var url = 'https://api.quotable.io/quotes?query=' + encodeURIComponent(query) + '&limit=20';
+
+  try {
+    var res = await fetch(url);
+    if(!res.ok) throw new Error('API error: ' + res.status);
+    var data = await res.json();
+    var results = data.results || [];
+
+    // If no results, try a broader search by using just the theme
+    if(results.length === 0 && picks.theme){
+      var fallbackUrl = 'https://api.quotable.io/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=20';
+      var fres = await fetch(fallbackUrl);
+      if(fres.ok){
+        var fdata = await fres.json();
+        results = fdata.results || [];
+      }
+    }
+
+    if(results.length === 0){
+      out.innerHTML = '<p class="none">No match. Try different answers.</p>';
+      return;
+    }
+
+    // Render results
+    var html = '';
+    for(var i=0;i<results.length;i++){
+      var r = results[i];
+      html += '<div class="card"><span class="qt">' + escapeHtml(r.content) + '</span><span class="au"> — ' + escapeHtml(r.author) + '</span></div>';
+    }
+    out.innerHTML = html;
+  } catch(err){
+    console.error(err);
+    out.innerHTML = '<p class="none">Error fetching quotes. Try again later.</p>';
+  }
+}
+
+// small helper to avoid HTML injection
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, function(m){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);
+  });
+}
 </script>
 </body>
 </html>
