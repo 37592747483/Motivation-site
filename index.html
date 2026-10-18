@@ -52,6 +52,19 @@ var page = 1;
 var totalCount = 0;
 var lastQuery = '';
 
+var fallbackQuotes = [
+  {text:"The only way to do great work is to love what you do.", author:"Steve Jobs", tags:["hopeful","love","serious"]},
+  {text:"It does not matter how slowly you go as long as you do not stop.", author:"Confucius", tags:["grit","hopeful","serious"]},
+  {text:"You are never too old to set another goal or to dream a new dream.", author:"C.S. Lewis", tags:["growing up","hopeful","serious"]},
+  {text:"Freedom is the oxygen of the soul.", author:"Moshe Dayan", tags:["freedom","heavy","serious"]},
+  {text:"Love is the greatest refreshment in life.", author:"Pablo Picasso", tags:["love","hopeful","funny"]},
+  {text:"If you want to fly, give up everything that weighs you down.", author:"Unknown", tags:["freedom","grit","serious"]},
+  {text:"Life is like riding a bicycle. To keep your balance, you must keep moving.", author:"Albert Einstein", tags:["growing up","hopeful","funny"]},
+  {text:"The future depends on what you do today.", author:"Mahatma Gandhi", tags:["grit","hopeful","serious"]},
+  {text:"In the middle of difficulty lies opportunity.", author:"Albert Einstein", tags:["heavy","grit","serious"]},
+  {text:"The secret of getting ahead is getting started.", author:"Mark Twain", tags:["hopeful","growing up","funny"]}
+];
+
 // restore picks from localStorage if present
 try{ var saved = localStorage.getItem('quote-picks'); if(saved){ picks = JSON.parse(saved);} }catch(e){ /* ignore */ }
 
@@ -82,7 +95,6 @@ function buildQuiz(){
 function updateButtons(container,selected){
   var sib=container.getElementsByTagName('button');
   for(var n=0;n<sib.length;n++){ sib[n].classList.remove('on'); sib[n].setAttribute('aria-checked','false'); }
-  // mark the clicked one
   for(var n=0;n<sib.length;n++){ if(sib[n].textContent===selected){ sib[n].classList.add('on'); sib[n].setAttribute('aria-checked','true'); } }
   updateSummary();
 }
@@ -98,15 +110,43 @@ function updateSummary(){
 
 buildQuiz();
 
-// helper: timeout-aware fetch using AbortController
 function fetchWithTimeout(url, opts, timeoutMs){
   var controller = new AbortController();
   var id = setTimeout(function(){ controller.abort(); }, timeoutMs||10000);
-  try{ return fetch(url, Object.assign({}, opts||{}, {signal: controller.signal})).finally(function(){ clearTimeout(id); }); }
-  catch(e){ clearTimeout(id); return Promise.reject(e); }
+  return fetch(url, Object.assign({}, opts||{}, {signal: controller.signal})).finally(function(){ clearTimeout(id); });
 }
 
-// improved search with pagination and better UX
+function scoreFallbackQuote(item){
+  var score = 0;
+  var mood = picks.mood || '';
+  var theme = picks.theme || '';
+  var tone = picks.tone || '';
+  if(item.tags && item.tags.indexOf(mood) !== -1) score += 4;
+  if(item.tags && item.tags.indexOf(theme) !== -1) score += 4;
+  if(item.tags && item.tags.indexOf(tone) !== -1) score += 3;
+  return score;
+}
+
+function renderFallbackQuotes(){
+  var items = fallbackQuotes
+    .map(function(item){ return {item:item, score:scoreFallbackQuote(item)}; })
+    .filter(function(entry){ return entry.score > 0; })
+    .sort(function(a,b){ return b.score - a.score; })
+    .slice(0,6)
+    .map(function(entry){ return entry.item; });
+
+  if(items.length === 0){
+    items = fallbackQuotes.slice(0,6);
+  }
+
+  var html = '';
+  for(var i=0;i<items.length;i++){
+    var r = items[i];
+    html += '<div class="card"><span class="qt">' + escapeHtml(r.text) + '</span><span class="au"> — ' + escapeHtml(r.author) + '</span></div>';
+  }
+  document.getElementById('out').innerHTML = '<div class="small">Showing offline fallback quotes</div>' + html;
+}
+
 async function find(reset){
   if(reset===undefined) reset = true;
   if(reset){ page = 1; totalCount = 0; lastQuery = ''; document.getElementById('out').innerHTML=''; }
@@ -114,17 +154,15 @@ async function find(reset){
   var out=document.getElementById("out");
   if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all 3 first.</p>'; return; }
 
-  if(!navigator.onLine){ out.innerHTML = '<p class="none">You appear offline. Check your network and try again.</p>'; return; }
-
   var query = want.join(' ');
   lastQuery = query;
   out.innerHTML = '<p class="status">Loading quotes…</p>';
   var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=' + limit + '&page=' + page;
 
   try {
+    if(!navigator.onLine){ renderFallbackQuotes(); return; }
     var res = await fetchWithTimeout(url, {mode:'cors'}, 10000);
     if(!res.ok){
-      // try to extract body for more helpful error message
       var details = '';
       try { details = await res.text(); details = details.substring(0,250); } catch(e){ /* ignore */ }
       throw new Error('API error: ' + res.status + ' ' + (res.statusText||'') + (details?(' — '+details):''));
@@ -134,16 +172,17 @@ async function find(reset){
     var results = data.results || [];
     totalCount = data.totalCount || results.length || 0;
 
-    // If no results, try a broader search by using just the theme
     if(results.length === 0 && picks.theme && query !== picks.theme){
       var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=' + limit + '&page=1';
       var fres = await fetchWithTimeout(fallbackUrl, {mode:'cors'}, 10000);
       if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; totalCount = fdata.totalCount || results.length || 0; }
     }
 
-    if(results.length === 0){ out.innerHTML = '<p class="none">No match. Try different answers.</p>'; return; }
+    if(results.length === 0){
+      renderFallbackQuotes();
+      return;
+    }
 
-    // Render results (append if page>1)
     var html = '';
     for(var i=0;i<results.length;i++){
       var r = results[i];
@@ -154,7 +193,6 @@ async function find(reset){
     if(page===1){ out.innerHTML = '<div class="small">Found ' + totalCount + ' quotes matching "' + escapeHtml(query) + '"</div>' + html; }
     else { out.innerHTML = out.innerHTML + html; }
 
-    // load more control
     var loadMoreNode = document.getElementById('loadMoreBtn'); if(loadMoreNode) loadMoreNode.remove();
     if(page * limit < totalCount){
       var lm = document.createElement('button'); lm.textContent = 'Load more'; lm.className='loadMore'; lm.id='loadMoreBtn';
@@ -162,7 +200,6 @@ async function find(reset){
       out.appendChild(lm);
     }
 
-    // attach copy handlers
     var copies = out.getElementsByClassName('copy');
     for(var c=0;c<copies.length;c++){
       copies[c].onclick = function(e){ var txt = this.getAttribute('data-quote'); if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ showToast('Copied to clipboard'); }, function(){ fallbackCopy(txt); }); } else { fallbackCopy(txt); }};
@@ -170,36 +207,25 @@ async function find(reset){
 
   } catch(err){
     console.error('Quote fetch failed:', err);
-    var msg = err && err.message ? err.message : String(err);
-    // show user-facing message with retry button
-    out.innerHTML = '<div><p class="none">Error fetching quotes: ' + escapeHtml(msg) + '</p>' +
-                    '<button class="retry" id="retryBtn">Retry</button></div>';
-    document.getElementById('retryBtn').addEventListener('click', function(){ find(true); });
+    renderFallbackQuotes();
   }
 }
 
-// helper to show tiny toast-like message
 function showToast(msg){ var s = document.createElement('div'); s.textContent = msg; s.style.position='fixed'; s.style.right='20px'; s.style.bottom='20px'; s.style.background='#222'; s.style.color='#fff'; s.style.padding='8px 12px'; s.style.borderRadius='6px'; document.body.appendChild(s); setTimeout(function(){ s.remove(); },1600); }
 function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); showToast('Copied to clipboard'); }catch(e){ showToast('Copy failed'); } ta.remove(); }
-
-// small helper to avoid HTML injection
 function escapeHtml(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
 function escapeHtmlAttr(str){ return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]); }); }
-
-// wire up search button
 document.getElementById('searchBtn').addEventListener('click', function(){ page = 1; find(true); });
-
-// basic tests (static checks) to ensure we didn't remove critical pieces
 (function runStaticChecks(){
   var src = document.documentElement.innerHTML;
   var checks = {
     hasFind: /function\s+find\(/.test(src),
     hasSearchEndpoint: /search\/quotes/.test(src),
-    hasLocalStorage: /localStorage/.test(src)
+    hasLocalStorage: /localStorage/.test(src),
+    hasFallbackQuotes: /fallbackQuotes/.test(src)
   };
   console.log('Static checks', checks);
 })();
-
 </script>
 </body>
 </html>
