@@ -14,18 +14,19 @@ h1{font-size:34px;margin:0 0 6px}
 .q{margin-bottom:16px}
 .q h2{font-size:18px;margin:0 0 10px}
 .opt{display:inline-block}
-button.opt{background:transparent;color:#eee;border:1px solid rgba(255,255,255,0.06);border-radius:999px;padding:8px 16px;margin:0 8px 8px 0;font-size:15px;cursor:pointer;font-family:inherit;transition:all .12s ease}
+button.opt{background:transparent;color:#eee;border:1px solid rgba(255,255,255,0.06);border-radius:999px;padding:8px 16px;margin:0 8px 8px 0;font-size:15px;cursor:pointer;font-family:inherit;transition:all .15s ease}
+button.opt:hover{border-color:rgba(255,255,255,0.18)}
 button.opt.on{background:#fff;color:#111;border-color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}
 button.opt:focus{outline:3px solid rgba(11,132,255,0.18)}
 button.opt[disabled]{opacity:0.6}
-.controls{display:flex;align-items:center;gap:12px;margin:12px 0 18px}
+.controls{display:flex;align-items:center;gap:12px;margin:12px 0 18px;flex-wrap:wrap}
 button.go{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(11,132,255,.12);transition:transform .08s ease}
 button.go:active{transform:translateY(1px)}
 button.clear{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;cursor:pointer}
 button.clear:hover{color:#fff;border-color:rgba(255,255,255,0.08)}
 button.retry{background:var(--danger);color:#fff;border:none;padding:6px 10px;border-radius:8px;cursor:pointer}
 #out{margin-top:18px;min-height:64px}
-.card{border-left:3px solid rgba(255,255,255,0.06);padding:12px 14px;margin-bottom:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.007));border-radius:8px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.card{border-left:3px solid rgba(255,255,255,0.06);padding:12px 14px;margin-bottom:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.007));border-radius:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .qt{display:block;font-size:17px}
 .au{color:var(--muted);font-size:13px}
 .none{color:var(--danger)}
@@ -42,28 +43,29 @@ button.retry{background:var(--danger);color:#fff;border:none;padding:6px 10px;bo
 <body>
 <div class="wrap">
 <h1>Quote Finder</h1>
-<p class="sub">Answer 3 questions and I'll find quotes that match. Selections are saved locally so you can come back.</p>
+<p class="sub">Answer a few questions and I'll find quotes that match. Selections are saved locally so you can come back.</p>
 <div id="quiz" role="radiogroup" aria-label="Quote options"></div>
 <div class="controls">
   <button class="go" id="searchBtn">Find my quotes</button>
   <button class="clear" id="clearBtn">Clear results</button>
   <button class="clear" id="clearSelectionsBtn" title="Clear saved selections">Clear selections</button>
-  <span class="small" id="summary">(choose 3 answers)</span>
+  <span class="small" id="summary">(choose 6 answers)</span>
 </div>
 <div id="out" aria-live="polite"></div>
 </div>
 <script>
 var questions=[
-  {k:"mood",label:"How are you feeling?",opts:["heavy","hopeful","chaotic"]},
-  {k:"theme",label:"What is on your mind?",opts:["love","grit","growing up","freedom"]},
-  {k:"tone",label:"What tone do you want?",opts:["serious","funny"]}
+  {k:"mood",label:"How are you feeling?",opts:["heavy","hopeful","chaotic","calm","confident"]},
+  {k:"theme",label:"What is on your mind?",opts:["love","grit","growing up","freedom","happiness","purpose"]},
+  {k:"tone",label:"What tone do you want?",opts:["serious","funny","inspirational","reflective"]},
+  {k:"length",label:"Quote length?",opts:["short","medium","long","any"]},
+  {k:"era",label:"Which era/style?",opts:["classical","modern","any"]},
+  {k:"author",label:"Prefer an author?",opts:["any","Marcus Aurelius","Seneca","Epictetus","Oscar Wilde","Alice Walker","Maya Angelou"]}
 ];
 
 var picks={};
-var limit = 6; var page = 1; var totalCount = 0; var lastQuery = '';
-var currentAbortController = null;
+var limit = 6; var page = 1; var totalCount = 0; var lastQuery = ''; var currentAbortController = null;
 
-// fallback quotes pool
 var fallbackQuotes = [
   {text:"The only way to do great work is to love what you do.", author:"Steve Jobs", tags:["hopeful","love","serious"]},
   {text:"It does not matter how slowly you go as long as you do not stop.", author:"Confucius", tags:["grit","hopeful","serious"]},
@@ -75,30 +77,20 @@ var fallbackQuotes = [
   {text:"The future depends on what you do today.", author:"Mahatma Gandhi", tags:["grit","hopeful","serious"]},
   {text:"In the middle of difficulty lies opportunity.", author:"Albert Einstein", tags:["heavy","grit","serious"]},
   {text:"The secret of getting ahead is getting started.", author:"Mark Twain", tags:["hopeful","growing up","funny"]},
-  {text:"Don't watch the clock; do what it does. Keep going.", author:"Sam Levenson", tags:["grit","hopeful","serious"]},
-  {text:"You miss 100% of the shots you don't take.", author:"Wayne Gretzky", tags:["grit","hopeful","funny"]},
   {text:"Do what you can, with what you have, where you are.", author:"Theodore Roosevelt", tags:["grit","hopeful","serious"]},
   {text:"Be yourself; everyone else is already taken.", author:"Oscar Wilde", tags:["growing up","funny","hopeful"]},
   {text:"Act as if what you do makes a difference. It does.", author:"William James", tags:["hopeful","grit","serious"]},
   {text:"What you get by achieving your goals is not as important as what you become by achieving your goals.", author:"Zig Ziglar", tags:["growing up","grit","serious"]},
-  {text:"The best way out is always through.", author:"Robert Frost", tags:["grit","heavy","serious"]},
   {text:"Happiness depends upon ourselves.", author:"Aristotle", tags:["hopeful","growing up","serious"]},
   {text:"Believe you can and you're halfway there.", author:"Theodore Roosevelt", tags:["hopeful","grit","serious"]},
   {text:"You must be the change you wish to see in the world.", author:"Mahatma Gandhi", tags:["freedom","hopeful","serious"]},
-  {text:"Tough times never last, but tough people do.", author:"Robert Schuller", tags:["grit","heavy","serious"]},
-  {text:"Imperfection is beauty, madness is genius and it's better to be absolutely ridiculous than absolutely boring.", author:"Marilyn Monroe", tags:["funny","love","growing up"]},
-  {text:"Everything you can imagine is real.", author:"Pablo Picasso", tags:["hopeful","freedom","funny"]},
   {text:"It always seems impossible until it's done.", author:"Nelson Mandela", tags:["grit","hopeful","serious"]},
   {text:"Strive not to be a success, but rather to be of value.", author:"Albert Einstein", tags:["growing up","serious","hopeful"]},
-  {text:"A room without books is like a body without a soul.", author:"Marcus Tullius Cicero", tags:["growing up","serious","heavy"]},
-  {text:"To live is the rarest thing in the world. Most people exist, that is all.", author:"Oscar Wilde", tags:["growing up","heavy","funny"]},
-  {text:"You only live once, but if you do it right, once is enough.", author:"Mae West", tags:["funny","hopeful","freedom"]},
   {text:"The purpose of our lives is to be happy.", author:"Dalai Lama", tags:["hopeful","growing up","serious"]},
   {text:"Keep your face always toward the sunshine—and shadows will fall behind you.", author:"Walt Whitman", tags:["hopeful","love","serious"]}
 ];
 
-// restore picks from localStorage if present
-try{ var saved = localStorage.getItem('quote-picks'); if(saved){ picks = JSON.parse(saved);} }catch(e){ /* ignore */ }
+try{ var saved = localStorage.getItem('quote-picks'); if(saved){ picks = JSON.parse(saved);} }catch(e){ }
 
 var q=document.getElementById("quiz");
 function buildQuiz(){
@@ -109,29 +101,21 @@ function buildQuiz(){
     var h=document.createElement("h2");h.textContent=Q.label;d.appendChild(h);
     for(var j=0;j<Q.opts.length;j++){(function(Q,opt){
       var span=document.createElement('span');span.className='opt';
-      var b=document.createElement("button");b.className='opt';b.textContent=opt; b.setAttribute('role','radio'); b.setAttribute('tabindex','0');
-      b.setAttribute('aria-checked','false');
-      // store dataset keys so selection handler is robust
-      b.dataset.qkey = Q.k;
-      b.dataset.opt = opt;
+      var b=document.createElement('button');b.className='opt';b.textContent=opt;b.setAttribute('role','radio');b.setAttribute('tabindex','0');b.setAttribute('aria-checked','false');
+      b.dataset.qkey = Q.k; b.dataset.opt = opt;
       b.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); selectOption(this.dataset.qkey, this.dataset.opt); } });
       b.onclick=function(){ selectOption(this.dataset.qkey, this.dataset.opt); };
-      span.appendChild(b);
-      d.appendChild(span);
+      span.appendChild(b); d.appendChild(span);
     })(Q,Q.opts[j]);}
     q.appendChild(d);
   }
-  // ensure restored selections are interactive and visually consistent
   restoreSelections();
   updateSummary();
 }
 
-// centralized selection handler
 function selectOption(qkey, opt, skipPersist){
-  // update model
   picks[qkey] = opt;
   if(!skipPersist) persistPicks();
-  // update UI buttons for that question
   var sel = document.querySelectorAll('button.opt[data-qkey="'+qkey+'"]');
   for(var i=0;i<sel.length;i++){
     var btn = sel[i];
@@ -142,15 +126,6 @@ function selectOption(qkey, opt, skipPersist){
   updateSummary();
 }
 
-function updateButtons(container,selected){
-  // kept for compatibility; but delegate to selectOption when needed
-  var qkey = null;
-  // try to infer qkey from container
-  var btn = container.querySelector('button.opt');
-  if(btn) qkey = btn.dataset.qkey;
-  if(qkey){ selectOption(qkey, selected); }
-}
-
 function restoreSelections(){
   for(var i=0;i<questions.length;i++){
     var Q = questions[i];
@@ -158,7 +133,6 @@ function restoreSelections(){
     if(!container) continue;
     var selected = picks[Q.k];
     if(selected){
-      // apply selection visually without re-persisting
       selectOption(Q.k, selected, true);
     } else {
       var sib = container.getElementsByTagName('button');
@@ -167,7 +141,7 @@ function restoreSelections(){
   }
 }
 
-function persistPicks(){ try{ localStorage.setItem('quote-picks', JSON.stringify(picks)); }catch(e){ /* noop */ } }
+function persistPicks(){ try{ localStorage.setItem('quote-picks', JSON.stringify(picks)); }catch(e){ } }
 function updateSummary(){ var cnt = 0; for(var k in picks) if(picks[k]) cnt++; document.getElementById('summary').textContent = '('+cnt+' of '+questions.length+' chosen)'; }
 
 buildQuiz();
@@ -193,8 +167,7 @@ function renderFallbackQuotes(){
   var shuffledPool = shuffleArray(fallbackQuotes);
   var scored = shuffledPool.map(function(item){ return {item:item, score:scoreFallbackQuote(item)}; });
   scored.sort(function(a,b){ return b.score - a.score; });
-  var pickCount = 6 + Math.floor(Math.random()*5);
-  var items = scored.slice(0,pickCount).map(function(e){ return e.item; });
+  var items = scored.slice(0,6).map(function(e){ return e.item; });
   var html = '';
   for(var i=0;i<items.length;i++){ var r = items[i]; html += '<div class="card"><div><span class="qt">' + escapeHtml(r.text) + '</span><div class="au"> — ' + escapeHtml(r.author) + '</div></div></div>'; }
   document.getElementById('out').innerHTML = '<div class="small">Showing offline fallback quotes</div>' + html;
@@ -202,44 +175,79 @@ function renderFallbackQuotes(){
 
 function showSpinner(){ document.getElementById('out').innerHTML = '<div style="display:flex;align-items:center;gap:12px"><div class="spinner" aria-hidden="true"></div><div class="small">Loading quotes…</div></div>'; }
 
+function buildQuoteRequest(){
+  var queryParts = [];
+  if(picks.mood) queryParts.push(picks.mood);
+  if(picks.theme) queryParts.push(picks.theme);
+  if(picks.tone) queryParts.push(picks.tone);
+
+  if(picks.era === 'classical') queryParts.push('stoic');
+  if(picks.era === 'modern') queryParts.push('modern');
+
+  var query = queryParts.join(' ');
+  var params = [];
+  params.push('limit=20');
+  if(query) params.push('query=' + encodeURIComponent(query));
+  if(picks.author && picks.author !== 'any') params.push('author=' + encodeURIComponent(picks.author));
+
+  // Handle length restrictions from the API if supported
+  if(picks.length === 'short') params.push('maxLength=80');
+  if(picks.length === 'medium') { params.push('minLength=81'); params.push('maxLength=160'); }
+  if(picks.length === 'long') params.push('minLength=161');
+
+  return 'https://api.quotable.io/quotes?' + params.join('&');
+}
+
 async function find(reset){
   if(reset===undefined) reset = true;
-  if(reset){ page = 1; totalCount = 0; lastQuery = ''; document.getElementById('out').innerHTML=''; }
+  if(reset){ page = 1; totalCount = 0; lastQuery = ''; }
+
   var want=[]; for(var k in picks){ if(picks[k]) want.push(picks[k]); }
   var out=document.getElementById("out");
-  if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all 3 first.</p>'; return; }
-  var query = want.join(' '); lastQuery = query;
+  if(want.length<questions.length){ out.innerHTML='<p class="none">Answer all questions first.</p>'; return; }
+
+  lastQuery = want.join(' ');
   showSpinner();
-  var url = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(query) + '&limit=' + limit + '&page=' + page;
+
+  var url = buildQuoteRequest();
+
   try {
     if(!navigator.onLine){ renderFallbackQuotes(); return; }
     var res = await fetchWithTimeout(url, {mode:'cors'}, 10000);
-    if(!res.ok){ var details=''; try{ details = await res.text(); details = details.substring(0,250); }catch(e){} throw new Error('API error: ' + res.status + ' ' + (res.statusText||'') + (details?(' — '+details):'')); }
-    var data = await res.json(); var results = data.results || []; totalCount = data.totalCount || results.length || 0;
-    if(results.length === 0 && picks.theme && query !== picks.theme){ var fallbackUrl = 'https://api.quotable.io/search/quotes?query=' + encodeURIComponent(picks.theme) + '&limit=' + limit + '&page=1'; var fres = await fetchWithTimeout(fallbackUrl, {mode:'cors'}, 10000); if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; totalCount = fdata.totalCount || results.length || 0; } }
-    if(results.length === 0){ renderFallbackQuotes(); return; }
-    results = shuffleArray(results);
+    if(!res.ok){ throw new Error('API error: ' + res.status + ' ' + (res.statusText||'')); }
+    var data = await res.json();
+    var results = data.results || [];
+
+    if(results.length === 0 && picks.theme){
+      var fallbackUrl = 'https://api.quotable.io/quotes?limit=20&query=' + encodeURIComponent(picks.theme);
+      var fres = await fetchWithTimeout(fallbackUrl, {mode:'cors'}, 10000);
+      if(fres.ok){ var fdata = await fres.json(); results = fdata.results || []; }
+    }
+
+    if(results.length === 0){
+      renderFallbackQuotes();
+      return;
+    }
+
     var html = '';
-    for(var i=0;i<results.length;i++){ var r = results[i]; html += '<div class="card"><div><span class="qt">' + escapeHtml(r.content) + '</span><div class="au"> — ' + escapeHtml(r.author) + '</div></div><div><button class="copy" data-quote="' + escapeHtmlAttr(r.content + ' — ' + r.author) + '">Copy</button></div></div>'; }
-    if(page===1){ out.innerHTML = '<div class="small">Found ' + totalCount + ' quotes matching "' + escapeHtml(query) + '"</div>' + html; } else { out.innerHTML = out.innerHTML + html; }
-    var loadMoreNode = document.getElementById('loadMoreBtn'); if(loadMoreNode) loadMoreNode.remove(); if(page * limit < totalCount){ var lm = document.createElement('button'); lm.textContent = 'Load more'; lm.className='loadMore'; lm.id='loadMoreBtn'; lm.onclick = function(){ page++; find(false); }; out.appendChild(lm); }
-    var copies = out.getElementsByClassName('copy'); for(var c=0;c<copies.length;c++){ copies[c].onclick = function(e){ var txt = this.getAttribute('data-quote'); if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ showToast('Copied to clipboard'); }, function(){ fallbackCopy(txt); }); } else { fallbackCopy(txt); } }; }
-  } catch(err){ console.error('Quote fetch failed:', err); renderFallbackQuotes(); }
+    for(var i=0;i<results.length;i++){
+      var r = results[i];
+      html += '<div class="card"><div><span class="qt">' + escapeHtml(r.content) + '</span><div class="au"> — ' + escapeHtml(r.author) + '</div></div></div>';
+    }
+    out.innerHTML = html;
+  } catch(err){
+    console.error('Quote fetch failed:', err);
+    out.innerHTML = '<p class="none">Error fetching quotes. Please check your connection or try again later.</p>';
+  }
 }
 
-function clearResults(){ try{ if(currentAbortController){ currentAbortController.abort(); currentAbortController = null; } }catch(e){} document.getElementById('out').innerHTML=''; showToast('Results cleared'); }
-
-function clearSelections(){ try{ localStorage.removeItem('quote-picks'); picks = {}; buildQuiz(); showToast('Selections cleared'); }catch(e){ console.error('Failed to clear selections', e); } }
-
-function showToast(msg){ var s = document.createElement('div'); s.textContent = msg; s.style.position='fixed'; s.style.right='18px'; s.style.bottom='18px'; s.style.background='#222'; s.style.color='#fff'; s.style.padding='8px 12px'; s.style.borderRadius='8px'; s.style.boxShadow='0 6px 18px rgba(0,0,0,0.4)'; document.body.appendChild(s); setTimeout(function(){ s.remove(); },1500); }
-function fallbackCopy(txt){ var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); showToast('Copied to clipboard'); }catch(e){ showToast('Copy failed'); } ta.remove(); }
-function escapeHtml(str){ return String(str).replace(/[&<>\\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]); }); }
-function escapeHtmlAttr(str){ return String(str).replace(/[&<>\\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[m]); }); }
+function clearResults(){ try{ if(currentAbortController){ currentAbortController.abort(); currentAbortController = null; } }catch(e){} document.getElementById('out').innerHTML=''; }
+function clearSelections(){ try{ localStorage.removeItem('quote-picks'); picks = {}; buildQuiz(); }catch(e){ console.error('Failed to clear selections', e); } }
+function escapeHtml(str){ return String(str).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }); }
 
 document.getElementById('searchBtn').addEventListener('click', function(){ page = 1; find(true); });
 document.getElementById('clearBtn').addEventListener('click', clearResults);
 document.getElementById('clearSelectionsBtn').addEventListener('click', clearSelections);
-(function runStaticChecks(){ var src = document.documentElement.innerHTML; var checks = { hasFind: /function\s+find\(/.test(src), hasSearchEndpoint: /search\/quotes/.test(src), hasLocalStorage: /localStorage/.test(src), hasFallbackQuotes: /fallbackQuotes/.test(src) }; console.log('Static checks', checks); })();
 </script>
 </body>
 </html>
